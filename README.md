@@ -6,6 +6,7 @@ Clogger is an opinionated logging library with next goals:
 * Every log line contains namespace, line and timestamp
 * If Clogger gets input which is not a map it is put on :message Clojure key.
 * Every logging level can have filtering functions which can suppress logging.  
+* Messages can be transformed with functions before printed to the standard out
 
 ## Quickstart
 
@@ -75,9 +76,24 @@ has been set.
 => nil
 ```
 
+
+### Transform functions
+Transform functions are applied before a message is printed to standard out. 
+
+```clj
+(log/init! {::log/log-level :info
+            :json? true
+            ::log/transform-fn [#(assoc % :hello "world")]})
+            
+(log/info "hello")
+=> {"ts":"2018-05-31T07:09:00","level":"info","ns":"hjhamala.clogger.core","line":1,"message":"Hello","hello":"world"}  
+
+(log/info {:uri "/health-check"})
+=> nil
+
 ## License
 
-Copyright © 2018 FIXME
+Copyright © 2018 Heikki Hämäläinen
 
 Distributed under the Eclipse Public License either version 1.0 or (at
 your option) any later version.

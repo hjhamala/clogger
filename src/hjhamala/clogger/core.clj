@@ -13,6 +13,9 @@
 (defonce ^:dynamic *filter-fns*
          {})
 
+(defonce ^:dynamic *transform-fns*
+         [])
+
 (defonce ^:dynamic *select-from-map* [])
 
 (s/def ::json? boolean?)
@@ -30,7 +33,9 @@
 
 (s/def ::select-keys (s/coll-of keyword?))
 
-(s/def ::init-input (s/keys ::opt [::filter-fn ::json? ::log-level ::select-keys]))
+(s/def ::transform-fn (s/coll-of ifn?))
+
+(s/def ::init-input (s/keys ::opt [::filter-fn ::json? ::log-level ::select-keys ::transform-fn]))
 
 (def logging-levels->int
   {:all       1
@@ -48,8 +53,10 @@
   (if (s/valid? ::init-input configuration)
     (do
       (and (::log-level configuration) (alter-var-root #'*logging-level* (constantly (::log-level configuration))))
-      (and (::json? configuration) (alter-var-root #'*json?* (constantly (::json? configuration))))
+      (and (some? (::json? configuration))
+           (alter-var-root #'*json?* (constantly (::json? configuration))))
       (and (::filter-fn configuration) (alter-var-root #'*filter-fns* #(merge % (::filter-fn configuration))))
+      (and (::transform-fn configuration) (alter-var-root #'*transform-fns* (constantly (::transform-fn configuration))))
       (and (::select-keys configuration) (alter-var-root #'*select-from-map* (constantly (::select-keys configuration))))
       true)
     (println "Invalid configuration!")))
@@ -67,20 +74,30 @@
   (locking *out*
     (println message)))
 
+(defn run-transformers
+  [m transform-fns]
+  (if (empty? transform-fns)
+    m
+    (loop [fns transform-fns message m]
+      (if (empty? fns) 
+        message
+        (recur (rest fns) ((first fns) message))))))
+
 (defn logging-event
   [level line ns selectable-map m]
   (try (when (log-event? level)
-                 (let [result (merge
-                                {:ts (iso-8859-time) :level level :ns ns :line line}
-                                (select-keys selectable-map *select-from-map*)
-                                m)]
-                   (when (or (nil? (get *filter-fns* level)) ((get *filter-fns* level) result))
-                     (if *json?*
-                       (safe-print (json/write-value-as-string result))
-                       (safe-print result))
-                     (when (= :spy level)
-                       (or (:message m) m)))))
-               (catch Exception e (safe-print (str "Exception in logging: " level ":" line ":" ns ":" selectable-map ":" m)))))
+         (let [result (merge
+                        {:ts (iso-8859-time) :level level :ns ns :line line}
+                        (select-keys selectable-map *select-from-map*)
+                        m)]
+           (when (or (nil? (get *filter-fns* level)) ((get *filter-fns* level) result))
+             (let [transformed-result (run-transformers result *transform-fns*)]
+               (if *json?*
+                 (safe-print (json/write-value-as-string transformed-result))
+                 (safe-print transformed-result)))
+             (when (= :spy level)
+               (or (:message m) m)))))
+       (catch Exception e (safe-print (str "Exception in logging: " level ":" line ":" ns ":" selectable-map ":" m)))))
 
 (defmulti logg (fn [level line ns & xs] (cond
                                           (and (= 1 (count xs)) (-> (first xs) map?)) :map

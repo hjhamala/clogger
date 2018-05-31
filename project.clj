@@ -1,4 +1,4 @@
-(defproject clogger "0.1.0-SNAPSHOT"
+(defproject clogger "0.1.1"
   :description "Simple stdout logger"
   :url "https://github.com/hjhamala/clogger"
   :license {:name "Eclipse Public License"

@@ -2,6 +2,7 @@
   (:require [clojure.test :refer :all]
             [hjhamala.clogger.core :as logger]
             [clojure.spec.alpha :as s]
+            [clojure.string :as cstr]
             [jsonista.core :as json]))
 
 (defn reset-init
@@ -98,3 +99,17 @@
       (is (= 1 (get parsed "a"))))
     (let [result (with-out-str (logger/info {:a 2}))]
       (is (= "" result)))))
+
+(deftest run-transformers-test
+  (testing "Empty transformers collection should result message itself"
+    (is (= {:a 1} (logger/run-transformers {:a 1} [])))
+    (is (= "start bar end" (logger/run-transformers "bar" [#(str "start " %) #(str % " end")]))))
+  
+  
+  (testing "Transformers are applied to non json message"
+    (logger/init! {::logger/log-level :all
+                   ::logger/json?     false
+                   ::logger/transform-fn [#(assoc % :b 2) #(assoc % :c 3)]})
+    (let [result (with-out-str (logger/info {:a 1}))]
+      (is (cstr/includes? result ":a 1, :b 2, :c 3" )))))
+
